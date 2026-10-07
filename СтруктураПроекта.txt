@@ -1,0 +1,23 @@
+my-project/
+├── cmd/myapp/
+│   └── main.go              // собирает всё вместе
+├── internal/
+│   ├── handlers/
+│   │   ├── handlers.go      // HTTP-хендлеры
+│   │   └── handlers_test.go
+│   ├── storage/
+│   │   ├── storage.go       // интерфейс Repository
+│   │   ├── memory.go        // реализация в памяти
+│   │   └── memory_test.go
+│   └── server/
+│       └── server.go        // создание и запуск сервера
+├── go.mod
+└── go.sum
+
+В инкременте 2:
+Нужно сделать:
+1. Разделить проект на слои (пакеты): handlers, storage, server.
+2. Слой storage должен реализовывать интерфейс (например, Repository).
+3. Это нужно для DI (внедрения зависимостей) и подмены хранилища моком в тестах.
+
+
