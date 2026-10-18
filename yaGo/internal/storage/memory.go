@@ -3,7 +3,7 @@ package storage
 import "sync"
 
 type MemoryStorage struct {
-	mu sync.Mutex
+	mu   sync.Mutex
 	urls map[string]string
 }
 

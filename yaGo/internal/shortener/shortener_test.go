@@ -1,6 +1,6 @@
 package shortener_test
 
-import(
+import (
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"testing"
 )
@@ -21,7 +21,7 @@ func TestShorten(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shortener.Shorten(tt.longURL)
+			got := shortener.Shorten()
 			// TODO: update the condition below to compare got with tt.want.
 
 			if got != tt.want {
