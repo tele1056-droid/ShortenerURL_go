@@ -6,6 +6,7 @@ import (
 
 	"github.com/tele1056-droid/yaGo/internal/handlers"
 	"github.com/tele1056-droid/yaGo/internal/storage"
+	"github.com/go-chi/chi/v5"
 )
 
 func main() {
@@ -36,23 +37,10 @@ func run() error {
 	h := handlers.NewHandler(repo)
 
 	//3. Регистрируем маршруты
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", mainHandler(h))
+	r := chi.NewRouter()
+	r.Post("/", h.ShortenHandler)		// только POST
+	r.Get("/{id}", h.RedirectHandler) 	// только GET с параметром
 
 	fmt.Println("Сервер запущен на :8080")
-	return http.ListenAndServe(":8080", mux)
+	return http.ListenAndServe(":8080", r)
 }
-
-/*
-	Инекр.2
-Это и есть DI: main собирает всё вместе — хранилище, хендлер, роутер. Хендлеры больше не знают, какое хранилище используется. Это делает код тестируемым и гибким.
-*/
-
-/*
-При регистарции маршрута для GET (mux.HandleFunc("/{id}", handlers.RedirectHandler)) возникает ПРОБЛЕМА: http.ServeMux не поддерживает шаблоны вида /{id}. Он понимает только префиксы. Поэтому /{id} не сработает — всё уйдёт в /.
-
-Для решения либо либо:
-1. Используя стандартную библиотеку: проверять метод и путь внутри одного хендлера: для этого сделаем func mainHandler()
-
-2. Либо использовать стороние библиотеки, например "github.com/go-chi/chi/v5"
-*/
