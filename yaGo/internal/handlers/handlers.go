@@ -9,6 +9,7 @@ import (
 
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
+	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
@@ -92,14 +93,14 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Извлечение кода из пути
-	//для начала нужно проверить не пустой ли r.URL.Path (""), если он пустой то при дальнейшей проверке будет вызвана паника и программа упадёт
-	if len(r.URL.Path) < 2 {
+	// 2. Извлечение кода из пути, в данной версии теперь chi вырезает код из пути
+	code := chi.URLParam(r,"id")
+
+	if code == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	code := r.URL.Path[1:] // тут мы из пути, т.е. то что в URL начиная с "/", и мы обрезаем с символа под индексом 1 и до конца, те символ "/" с индексом 0 не попадет в наш code
+	
 
 	// 3. Поиск URL в хранилище
 	longURL, ok := h.repo.Get(code)

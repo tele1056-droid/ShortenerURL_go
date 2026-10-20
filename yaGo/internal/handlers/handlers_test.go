@@ -7,6 +7,7 @@ import (
     "testing"
 
     "github.com/tele1056-droid/yaGo/internal/storage"
+    "github.com/go-chi/chi/v5"
 )
 
 func TestShortenHandler(t *testing.T) {
@@ -55,24 +56,27 @@ func TestRedirectHandler(t *testing.T) {
     h := NewHandler(repo)
 
     tests := []struct {
-        name        string
-        method      string
-        path        string
-        wantCode    int
+        name         string
+        method       string
+        path         string
+        wantCode     int
         wantLocation string
     }{
         {"успех", http.MethodGet, "/abc123", http.StatusTemporaryRedirect, "https://example.com"},
         {"неверный метод", http.MethodPost, "/abc123", http.StatusMethodNotAllowed, ""},
-        {"пустой код", http.MethodGet, "/", http.StatusBadRequest, ""},
         {"несуществующий код", http.MethodGet, "/nonexistent", http.StatusNotFound, ""},
     }
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
+            // Создаём роутер chi и регистрируем маршрут
+            r := chi.NewRouter()
+            r.Get("/{id}", h.RedirectHandler)
+
+            // Создаём запрос и прогоняем его через роутер
             req := httptest.NewRequest(tt.method, tt.path, nil)
             w := httptest.NewRecorder()
-
-            h.RedirectHandler(w, req)
+            r.ServeHTTP(w, req)
 
             if w.Code != tt.wantCode {
                 t.Errorf("ожидался код %d, получен %d", tt.wantCode, w.Code)
