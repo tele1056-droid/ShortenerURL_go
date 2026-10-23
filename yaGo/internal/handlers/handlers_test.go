@@ -29,7 +29,7 @@ func TestShortenHandler(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             // Создаём мок-хранилище
             repo := storage.NewMemoryStorage()
-            h := NewHandler(repo)
+            h := NewHandler(repo, "http://localhost:8080")
 
             // Создаём фейковый запрос
             req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
@@ -53,7 +53,7 @@ func TestRedirectHandler(t *testing.T) {
     // Подготовка: создаём хранилище с одной ссылкой
     repo := storage.NewMemoryStorage()
     repo.Save("abc123", "https://example.com")
-    h := NewHandler(repo)
+    h := NewHandler(repo, "http://localhost:8080")
 
     tests := []struct {
         name         string
