@@ -1,24 +1,72 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
-	"github.com/go-chi/chi/v5"
 )
+
+type ShortenRequest struct {
+	URL string `json:"url"`
+}
+
+type ShortenResponse struct {
+	Result string `json:"result"`
+}
+
 
 type Handler struct {
 	repo storage.Repository
+	baseURL string
 }
 
-func NewHandler(repo storage.Repository) *Handler {
-	return &Handler{repo: repo}
+func NewHandler(repo storage.Repository, baseURL string) *Handler {
+	return &Handler{repo: repo, baseURL: baseURL}
 }
+
+// 1.a.
+func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
+	// 1.a. Проверка метода (POST) и Content-Type (application/json)
+	if r.Method != http.MethodPost {
+        w.WriteHeader(http.StatusMethodNotAllowed)
+        return
+    }
+
+	// 2.a. Чтение и парсинг JSON из тела
+	var req ShortenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Некорректный JSON", http.StatusBadRequest)
+		return
+	}
+
+	// 3.a. Валидация URL (можно переиспользовать логику из текстовго хендлера)
+	if req.URL == "" {
+		http.Error(w, "URL не может быть пустым", http.StatusBadRequest)
+		return
+	}
+
+	// 4.a. Генерация кода и сохранение
+	code := shortener.Shorten()
+	h.repo.Save(code, req.URL)
+
+	// 5.a. Формирование JSON-ответа
+	resp := ShortenResponse{
+		Result: fmt.Sprintf("%s/%s", h.baseURL, code),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp) // вот здесь используется JSON-энкодер
+
+}
+
 
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. проверка метода
@@ -83,7 +131,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	// 12. Запись ответа
-	fmt.Fprintf(w, "http://localhost:8080/%s", code)
+	fmt.Fprintf(w, "%s%s", h.baseURL,code)
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
