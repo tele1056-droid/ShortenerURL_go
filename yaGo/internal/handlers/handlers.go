@@ -21,9 +21,8 @@ type ShortenResponse struct {
 	Result string `json:"result"`
 }
 
-
 type Handler struct {
-	repo storage.Repository
+	repo    storage.Repository
 	baseURL string
 }
 
@@ -35,9 +34,9 @@ func NewHandler(repo storage.Repository, baseURL string) *Handler {
 func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	// 1.a. Проверка метода (POST) и Content-Type (application/json)
 	if r.Method != http.MethodPost {
-        w.WriteHeader(http.StatusMethodNotAllowed)
-        return
-    }
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 
 	// 2.a. Чтение и парсинг JSON из тела
 	var req ShortenRequest
@@ -66,7 +65,6 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp) // вот здесь используется JSON-энкодер
 
 }
-
 
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. проверка метода
@@ -131,7 +129,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	// 12. Запись ответа
-	fmt.Fprintf(w, "%s%s", h.baseURL,code)
+	fmt.Fprintf(w, "%s%s", h.baseURL, code)
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -142,13 +140,12 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Извлечение кода из пути, в данной версии теперь chi вырезает код из пути
-	code := chi.URLParam(r,"id")
+	code := chi.URLParam(r, "id")
 
 	if code == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	
 
 	// 3. Поиск URL в хранилище
 	longURL, ok := h.repo.Get(code)
