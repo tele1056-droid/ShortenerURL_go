@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,6 +38,14 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
+	// 1.b Проверка Content-Type (с поддержкой charset)
+	contentType := r.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "application/json" {
+        http.Error(w, "Ожидается Content-Type: application/json", http.StatusUnsupportedMediaType)
+        return
+    }
 
 	// 2.a. Чтение и парсинг JSON из тела
 	var req ShortenRequest
@@ -75,10 +84,12 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Проверка Content-Type
 	contentType := r.Header.Get("Content-Type")
-	if contentType != "text/plain" {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "text/plain" {
 		http.Error(w, "Ожидается Content-Type: text/plain", http.StatusUnsupportedMediaType)
 		return
 	}
+	
 
 	// 3. Ограничение размера тела (защита от гигантских запросов)
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1 Мб
@@ -129,7 +140,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	// 12. Запись ответа
-	fmt.Fprintf(w, "%s%s", h.baseURL, code)
+	fmt.Fprintf(w, "%s/%s", h.baseURL, code)
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
