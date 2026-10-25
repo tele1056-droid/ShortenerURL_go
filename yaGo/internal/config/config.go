@@ -1,7 +1,9 @@
 package config
 
-import "flag"
-
+import (
+	"flag"
+	"os"
+)
 // в этой структуре мы будем хранить переменные для аргументов команд. строки (флаги)
 type Config struct {
 	ServerAddress string // адрес запуска HTTP-сервера (например, localhost:8080)
@@ -12,11 +14,21 @@ type Config struct {
 func NewConfig() *Config {
 	cfg := &Config{}
 
+	 // 1. Читаем флаги (с значениями по умолчанию)
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "адрес запуска HTTP-сервера")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()
+
+	// 2. Проверяем переменные окружения (они перезаписывают флаги)
+	if envAddr := os.Getenv("SERVER_ADDRESS"); envAddr != "" {
+		cfg.ServerAddress = envAddr
+	}
+
+	if envBase := os.Getenv("BASE_URL"); envBase != "" {
+		cfg.BaseURL = envBase
+	}
 	return cfg
 }
 
