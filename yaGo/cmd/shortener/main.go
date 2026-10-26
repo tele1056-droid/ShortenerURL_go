@@ -20,28 +20,40 @@ func main() {
 }
 
 func run() error {
-	// a.1 создаем логгер
-	logger, _ := zap.NewProduction()
-	defer logger.Sync() // Важно: сбрасывает буфер логов при выходе
-
-	//1.a. Инициализируем конфигурацию (читаем флаги)
+	// 1. Инициализируем конфигурацию (читаем флаги и env)
 	cfg := config.NewConfig()
 
-	//1. Создаем хранилище
-	repo := storage.NewMemoryStorage()
+	// 2. Создаём логгер
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
 
-	//2. Создаем хендлер, внедряя в него хранилище (DI)
+	// 3. Создаём хранилище (файловое или в памяти)
+	var repo storage.Repository
+	var err error
+
+	if cfg.FileStoragePath != "" {
+		// Если путь к файлу задан — используем файловое хранилище
+		repo, err = storage.NewFileStorage(cfg.FileStoragePath)
+		if err != nil {
+			return fmt.Errorf("не удалось создать файловое хранилище: %w", err)
+		}
+		logger.Info("используется файловое хранилище", zap.String("path", cfg.FileStoragePath))
+	} else {
+		// Иначе — в памяти
+		repo = storage.NewMemoryStorage()
+		logger.Info("используется хранилище в памяти")
+	}
+
+	// 4. Создаём хендлер, внедряя хранилище (DI)
 	h := handlers.NewHandler(repo, cfg.BaseURL)
 
-	//3. Регистрируем маршруты
+	// 5. Регистрируем маршруты
 	r := chi.NewRouter()
-
-	//Подключаем middlware глобально для всех запросов
 	r.Use(middleware.LoggerMiddleware(logger))
 
-	r.Post("/", h.ShortenHandler)                // только POST
-	r.Get("/{id}", h.RedirectHandler)            // только GET с параметром
-	r.Post("/api/shorten", h.JSONShortenHandler) // новый маршрут
+	r.Post("/", h.ShortenHandler)
+	r.Get("/{id}", h.RedirectHandler)
+	r.Post("/api/shorten", h.JSONShortenHandler)
 
 	fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
 	return http.ListenAndServe(cfg.ServerAddress, r)

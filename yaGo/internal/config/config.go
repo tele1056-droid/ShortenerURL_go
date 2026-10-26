@@ -4,19 +4,22 @@ import (
 	"flag"
 	"os"
 )
+
 // в этой структуре мы будем хранить переменные для аргументов команд. строки (флаги)
 type Config struct {
-	ServerAddress string // адрес запуска HTTP-сервера (например, localhost:8080)
-	BaseURL       string // базовый адрес результирующего URL (например, http://localhost:8080)
+	ServerAddress   string // адрес запуска HTTP-сервера (например, localhost:8080)
+	BaseURL         string // базовый адрес результирующего URL (например, http://localhost:8080)
+	FileStoragePath string // конфигурация для пути к файлу
 }
 
 // NewConfig читает флаги командной строки и возвращает готовую конфигурацию
 func NewConfig() *Config {
 	cfg := &Config{}
 
-	 // 1. Читаем флаги (с значениями по умолчанию)
+	// 1. Читаем флаги (с значениями по умолчанию)
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "адрес запуска HTTP-сервера")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
+	flag.StringVar(&cfg.FileStoragePath, "f", "", "путь к файлу для хранения данных")
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()
@@ -28,6 +31,10 @@ func NewConfig() *Config {
 
 	if envBase := os.Getenv("BASE_URL"); envBase != "" {
 		cfg.BaseURL = envBase
+	}
+
+	if envPath := os.Getenv("FILE_STORAGE_PATH"); envPath != "" {
+		cfg.FileStoragePath = envPath
 	}
 	return cfg
 }
