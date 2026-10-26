@@ -7,7 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/tele1056-droid/yaGo/internal/config"
 	"github.com/tele1056-droid/yaGo/internal/handlers"
+	"github.com/tele1056-droid/yaGo/internal/middleware"
 	"github.com/tele1056-droid/yaGo/internal/storage"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -18,6 +20,10 @@ func main() {
 }
 
 func run() error {
+	// a.1 создаем логгер
+	logger, _ := zap.NewProduction()
+	defer logger.Sync() // Важно: сбрасывает буфер логов при выходе
+
 	//1.a. Инициализируем конфигурацию (читаем флаги)
 	cfg := config.NewConfig()
 
@@ -29,6 +35,10 @@ func run() error {
 
 	//3. Регистрируем маршруты
 	r := chi.NewRouter()
+
+	//Подключаем middlware глобально для всех запросов
+	r.Use(middleware.LoggerMiddleware(logger))
+
 	r.Post("/", h.ShortenHandler)                // только POST
 	r.Get("/{id}", h.RedirectHandler)            // только GET с параметром
 	r.Post("/api/shorten", h.JSONShortenHandler) // новый маршрут
