@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,85 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
+
+func TestJSONShortenHandler(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      string
+		contentType string
+		body        string
+		wantCode    int
+		wantResult  string // ожидаемый результат (если 201)
+	}{
+		{
+			"успех",
+			http.MethodPost,
+			"application/json",
+			`{"url":"https://practicum.yandex.ru"}`,
+			http.StatusCreated,
+			"http://localhost:8080/1", // счётчик начинается с 1
+		},
+		{
+			"неверный метод",
+			http.MethodGet,
+			"application/json",
+			`{"url":"https://practicum.yandex.ru"}`,
+			http.StatusMethodNotAllowed,
+			"",
+		},
+		{
+			"неверный content-type",
+			http.MethodPost,
+			"text/plain",
+			`{"url":"https://practicum.yandex.ru"}`,
+			http.StatusUnsupportedMediaType,
+			"",
+		},
+		{
+			"пустой URL",
+			http.MethodPost,
+			"application/json",
+			`{"url":""}`,
+			http.StatusBadRequest,
+			"",
+		},
+		{
+			"некорректный JSON",
+			http.MethodPost,
+			"application/json",
+			`{"url":`,
+			http.StatusBadRequest,
+			"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := storage.NewMemoryStorage()
+			h := NewHandler(repo, "http://localhost:8080")
+
+			req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", tt.contentType)
+
+			w := httptest.NewRecorder()
+			h.JSONShortenHandler(w, req)
+
+			if w.Code != tt.wantCode {
+				t.Errorf("ожидался код %d, получен %d", tt.wantCode, w.Code)
+			}
+
+			if tt.wantResult != "" {
+				var resp ShortenResponse
+				if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+					t.Fatalf("не удалось распарсить ответ: %v", err)
+				}
+				if resp.Result != tt.wantResult {
+					t.Errorf("ожидался результат %s, получен %s", tt.wantResult, resp.Result)
+				}
+			}
+		})
+	}
+}
 
 func TestShortenHandler(t *testing.T) {
 	tests := []struct {
