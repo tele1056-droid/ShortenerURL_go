@@ -49,7 +49,14 @@ func run() error {
 
 	// 5. Регистрируем маршруты
 	r := chi.NewRouter()
+
+	//iter7.a. Сначала разжимаем входящий запрос
+	r.Use(middleware.DecompressMiddleware)
+	// Логируем
 	r.Use(middleware.LoggerMiddleware(logger))
+
+	//iter7.b. Сжимаем ответ (если клиент поддерживает)
+	r.Use(middleware.GzipMiddleware)
 
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
