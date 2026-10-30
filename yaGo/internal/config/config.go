@@ -19,7 +19,7 @@ func NewConfig() *Config {
 	// 1. Читаем флаги (с значениями по умолчанию)
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "адрес запуска HTTP-сервера")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
-	flag.StringVar(&cfg.FileStoragePath, "f", "", "путь к файлу для хранения данных")
+	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/short-url-db.json", "путь к файлу для хранения данных")
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()
