@@ -27,8 +27,38 @@ type Handler struct {
 	baseURL string
 }
 
+type respPair struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func NewHandler(repo storage.Repository, baseURL string) *Handler {
 	return &Handler{repo: repo, baseURL: baseURL}
+}
+
+func (h *Handler) GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	urls := h.repo.GetAll()
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var result []respPair
+	for code, original := range urls {
+		result = append(result, respPair{
+			ShortURL:    fmt.Sprintf("%s/%s", h.baseURL, code),
+			OriginalURL: original,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
 }
 
 // 1.a.
@@ -43,9 +73,9 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil || mediaType != "application/json" {
-        http.Error(w, "Ожидается Content-Type: application/json", http.StatusUnsupportedMediaType)
-        return
-    }
+		http.Error(w, "Ожидается Content-Type: application/json", http.StatusUnsupportedMediaType)
+		return
+	}
 
 	// 2.a. Чтение и парсинг JSON из тела
 	var req ShortenRequest
@@ -89,7 +119,6 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ожидается Content-Type: text/plain", http.StatusUnsupportedMediaType)
 		return
 	}
-	
 
 	// 3. Ограничение размера тела (защита от гигантских запросов)
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1 Мб

@@ -19,7 +19,7 @@ func NewConfig() *Config {
 	// 1. Читаем флаги (с значениями по умолчанию)
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "адрес запуска HTTP-сервера")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
-	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/short-url-db.json", "путь к файлу для хранения данных")
+	flag.StringVar(&cfg.FileStoragePath, "f", "short-url-db.json", "путь к файлу для хранения данных") // тут, если будет запущен без флага -file-storage-path, то по умолчанию будет исп. файл storage.json (он будет создаваться в той папке откуда запущен автотест/сервер, обычно автотест запускаю из корня /yaGo)
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()

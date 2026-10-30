@@ -24,3 +24,14 @@ func (s *MemoryStorage) Get(code string) (string, bool) {
 	longURL, ok := s.urls[code]
 	return longURL, ok
 }
+
+func (s *MemoryStorage) GetAll() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Возвращаем копию, чтобы не было гонок
+	result := make(map[string]string, len(s.urls))
+	for k, v := range s.urls {
+		result[k] = v
+	}
+	return result
+}

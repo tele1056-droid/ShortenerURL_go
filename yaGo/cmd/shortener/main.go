@@ -61,6 +61,7 @@ func run() error {
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 	r.Post("/api/shorten", h.JSONShortenHandler)
+	r.Get("/api/user/urls", h.GetUserURLsHandler)
 
 	fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
 	return http.ListenAndServe(cfg.ServerAddress, r)

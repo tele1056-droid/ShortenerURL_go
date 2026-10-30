@@ -26,6 +26,17 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return fs, nil
 }
 
+func (s *FileStorage) GetAll() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Возвращаем копию, чтобы не было гонок
+	result := make(map[string]string, len(s.urls))
+	for k, v := range s.urls {
+		result[k] = v
+	}
+	return result
+}
+
 func (s *FileStorage) load() error {
 	file, err := os.Open(s.filePath)
 	if err != nil {
