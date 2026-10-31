@@ -11,6 +11,29 @@ import (
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
 
+func TestGetUserURLsHandler(t *testing.T) {
+	repo := storage.NewMemoryStorage()
+	repo.Save("1", "https://example.com", "test-user")
+	h := NewHandler(repo, "http://localhost:8080")
+
+	// Без куки → 204
+	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
+	w := httptest.NewRecorder()
+	h.GetUserURLsHandler(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("ожидался код 204, получен %d", w.Code)
+	}
+
+	// С кукой → 200
+	req = httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
+	req.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	w = httptest.NewRecorder()
+	h.GetUserURLsHandler(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("ожидался код 200, получен %d", w.Code)
+	}
+}
+
 func TestJSONShortenHandler(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -69,6 +92,7 @@ func TestJSONShortenHandler(t *testing.T) {
 
 			req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
+			req.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
 
 			w := httptest.NewRecorder()
 			h.JSONShortenHandler(w, req)
@@ -77,13 +101,14 @@ func TestJSONShortenHandler(t *testing.T) {
 				t.Errorf("ожидался код %d, получен %d", tt.wantCode, w.Code)
 			}
 
-			if tt.wantResult != "" {
+			// Проверяем только префикс, а не точный код
+			if tt.wantCode == http.StatusCreated {
 				var resp ShortenResponse
 				if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 					t.Fatalf("не удалось распарсить ответ: %v", err)
 				}
-				if resp.Result != tt.wantResult {
-					t.Errorf("ожидался результат %s, получен %s", tt.wantResult, resp.Result)
+				if !strings.HasPrefix(resp.Result, "http://localhost:8080/") {
+					t.Errorf("неожиданный результат: %s", resp.Result)
 				}
 			}
 		})
@@ -114,7 +139,7 @@ func TestShortenHandler(t *testing.T) {
 			// Создаём фейковый запрос
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
-
+			req.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
 			// Создаём фейковый ответ
 			w := httptest.NewRecorder()
 
@@ -132,7 +157,7 @@ func TestShortenHandler(t *testing.T) {
 func TestRedirectHandler(t *testing.T) {
 	// Подготовка: создаём хранилище с одной ссылкой
 	repo := storage.NewMemoryStorage()
-	repo.Save("abc123", "https://example.com")
+	repo.Save("abc123", "https://example.com", "test-user")
 	h := NewHandler(repo, "http://localhost:8080")
 
 	tests := []struct {

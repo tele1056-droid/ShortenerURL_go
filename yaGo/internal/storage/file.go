@@ -11,14 +11,14 @@ import (
 type FileStorage struct {
 	mu       sync.Mutex
 	filePath string
-	urls     map[string]string // short_url -> original_url
-	counter  int               // для uuid
+	urls     map[string]URLRecord // теперь храним записи, а не просто строки
+	counter  int                  // для uuid
 }
 
 func NewFileStorage(filePath string) (*FileStorage, error) {
 	fs := &FileStorage{
 		filePath: filePath,
-		urls:     make(map[string]string),
+		urls:     make(map[string]URLRecord),
 	}
 	if err := fs.load(); err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -26,15 +26,22 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return fs, nil
 }
 
-func (s *FileStorage) GetAll() map[string]string {
+func (s *FileStorage) GetMaxUUID() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Возвращаем копию, чтобы не было гонок
-	result := make(map[string]string, len(s.urls))
-	for k, v := range s.urls {
-		result[k] = v
+	return s.counter // предполагается, что counter обновляется в load()
+}
+
+func (s *FileStorage) GetAllByUser(userID string) (map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]string)
+	for code, rec := range s.urls {
+		if rec.UserID == userID {
+			result[code] = rec.OriginalURL
+		}
 	}
-	return result
+	return result, nil
 }
 
 func (s *FileStorage) load() error {
@@ -48,10 +55,16 @@ func (s *FileStorage) load() error {
 	for scanner.Scan() {
 		var rec URLRecord
 		if err := json.Unmarshal(scanner.Bytes(), &rec); err != nil {
-			continue // пропускаем битые строки
+			continue
 		}
-		s.urls[rec.ShortURL] = rec.OriginalURL
-		s.counter++ // восстанавливаем счётчик
+		s.urls[rec.ShortURL] = rec
+
+		// Обновляем счётчик, чтобы он был не меньше uuid
+		if id, err := strconv.Atoi(rec.UUID); err == nil {
+			if id > s.counter {
+				s.counter = id
+			}
+		}
 	}
 	return scanner.Err()
 }
@@ -72,23 +85,29 @@ func (s *FileStorage) save(rec URLRecord) error {
 	return err
 }
 
-func (s *FileStorage) Save(code, longURL string) error {
+func (s *FileStorage) Save(code, longURL, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.urls[code] = longURL
 	s.counter++
 	rec := URLRecord{
 		UUID:        strconv.Itoa(s.counter),
 		ShortURL:    code,
 		OriginalURL: longURL,
+		UserID:      userID,
 	}
+	s.urls[code] = rec
 	return s.save(rec)
 }
 
 func (s *FileStorage) Get(code string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	longURL, ok := s.urls[code]
-	return longURL, ok
+
+	rec, ok := s.urls[code]
+	if !ok {
+		return "", false
+	}
+
+	return rec.OriginalURL, true
 }

@@ -25,6 +25,14 @@ func toBase62(n int64) string {
 	return result
 }
 
+func SetCounter(n int) {
+	mu.Lock()
+	defer mu.Unlock()
+	if int(counter) < n {
+		counter = int64(n)
+	}
+}
+
 //в этой версии, Shortener() принимает длинный URL и возвращает сгенерированный код, но не сохраняет его - сохраняет теперь repo.Save()
 
 // в этой версии убираем из сигнатуры Shorten() аргумент и в пакете handlers тоже меняем вызов func Shorten()

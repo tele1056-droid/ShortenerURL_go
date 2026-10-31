@@ -1,7 +1,7 @@
 package storage
 
 type Repository interface {
-	Save(code, longURL string) error
+	Save(code, longURL, userID string) error
 	Get(code string) (string, bool)
-	GetAll() map[string]string // новый метод
+	GetAllByUser(userID string) (map[string]string, error) // новый метод
 }
