@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid" // или используйте crypto/rand
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
@@ -27,119 +28,166 @@ type Handler struct {
 	baseURL string
 }
 
+type respPair struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func NewHandler(repo storage.Repository, baseURL string) *Handler {
 	return &Handler{repo: repo, baseURL: baseURL}
 }
 
-// 1.a.
+// getUserID извлекает user_id из куки. Если куки нет, возвращает false.
+func getUserID(r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("user_id")
+	if err != nil {
+		return "", false
+	}
+	return cookie.Value, true
+}
+
+// setUserID устанавливает куку с user_id.
+func setUserID(w http.ResponseWriter, userID string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:  "user_id",
+		Value: userID,
+		Path:  "/",
+	})
+}
+
+func (h *Handler) GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := getUserID(r)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent) // 204
+		return
+	}
+
+	urls, err := h.repo.GetAllByUser(userID)
+	if err != nil {
+		http.Error(w, "Ошибка получения данных", http.StatusInternalServerError)
+		return
+	}
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var result []respPair
+	for code, original := range urls {
+		result = append(result, respPair{
+			ShortURL:    fmt.Sprintf("%s/%s", h.baseURL, code),
+			OriginalURL: original,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+}
+
 func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
-	// 1.a. Проверка метода (POST) и Content-Type (application/json)
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 1.b Проверка Content-Type (с поддержкой charset)
 	contentType := r.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil || mediaType != "application/json" {
-        http.Error(w, "Ожидается Content-Type: application/json", http.StatusUnsupportedMediaType)
-        return
-    }
+		http.Error(w, "Ожидается Content-Type: application/json", http.StatusUnsupportedMediaType)
+		return
+	}
 
-	// 2.a. Чтение и парсинг JSON из тела
 	var req ShortenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Некорректный JSON", http.StatusBadRequest)
 		return
 	}
 
-	// 3.a. Валидация URL (можно переиспользовать логику из текстовго хендлера)
 	if req.URL == "" {
 		http.Error(w, "URL не может быть пустым", http.StatusBadRequest)
 		return
 	}
 
-	// 4.a. Генерация кода и сохранение
-	code := shortener.Shorten()
-	h.repo.Save(code, req.URL)
+	// Получаем или создаем user_id
+	userID, ok := getUserID(r)
+	if !ok {
+		userID = uuid.New().String()
+		setUserID(w, userID)
+	}
 
-	// 5.a. Формирование JSON-ответа
+	code := shortener.Shorten()
+	h.repo.Save(code, req.URL, userID) // передаем userID
+
 	resp := ShortenResponse{
 		Result: fmt.Sprintf("%s/%s", h.baseURL, code),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp) // вот здесь используется JSON-энкодер
-
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. проверка метода
 	if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 2. Проверка Content-Type
 	contentType := r.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil || mediaType != "text/plain" {
 		http.Error(w, "Ожидается Content-Type: text/plain", http.StatusUnsupportedMediaType)
 		return
 	}
-	
 
-	// 3. Ограничение размера тела (защита от гигантских запросов)
-	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1 Мб
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 
-	// 4. Чтение тела, по условию url будет в теле запроса (r.Body)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Ошибка чтения тела", http.StatusBadRequest)
 		return
 	}
 
-	// 5. Проверка, что тело не пустое
 	if len(body) == 0 {
 		http.Error(w, "Пустое тело запроса", http.StatusBadRequest)
 		return
 	}
 
-	// 6. Обрезка пробелов и переводов строк
 	longURL := strings.TrimSpace(string(body))
-
-	// 7. Повторная проверка после обрезки
 	if longURL == "" {
 		http.Error(w, "URL не может быть пустым", http.StatusBadRequest)
 		return
 	}
 
-	// 8. Проверка, что URL начинается с http:// или https://
 	if !strings.HasPrefix(longURL, "http://") && !strings.HasPrefix(longURL, "https://") {
 		http.Error(w, "URL должен начинаться с http:// или https://", http.StatusBadRequest)
 		return
 	}
 
-	// 9. Проверка, что URL валидный
 	parsedURL, err := url.ParseRequestURI(longURL)
 	if err != nil || parsedURL.Host == "" {
 		http.Error(w, "Некорректный URL", http.StatusBadRequest)
 		return
 	}
 
-	// 10. Генерация кода
+	// Получаем или создаем user_id
+	userID, ok := getUserID(r)
+	if !ok {
+		userID = uuid.New().String()
+		setUserID(w, userID)
+	}
+
 	code := shortener.Shorten()
+	h.repo.Save(code, longURL, userID) // передаем userID
 
-	// Сохраняем через интерфейс
-	h.repo.Save(code, longURL)
-
-	// 11. Установка заголовка и кода ответа
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-
-	// 12. Запись ответа
 	fmt.Fprintf(w, "%s/%s", h.baseURL, code)
 }
 

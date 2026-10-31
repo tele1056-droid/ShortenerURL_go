@@ -8,6 +8,7 @@ import (
 	"github.com/tele1056-droid/yaGo/internal/config"
 	"github.com/tele1056-droid/yaGo/internal/handlers"
 	"github.com/tele1056-droid/yaGo/internal/middleware"
+	"github.com/tele1056-droid/yaGo/internal/shortener" // добав. импорт
 	"github.com/tele1056-droid/yaGo/internal/storage"
 	"go.uber.org/zap"
 )
@@ -29,14 +30,19 @@ func run() error {
 
 	// 3. Создаём хранилище (файловое или в памяти)
 	var repo storage.Repository
-	var err error
 
 	if cfg.FileStoragePath != "" {
 		// Если путь к файлу задан — используем файловое хранилище
-		repo, err = storage.NewFileStorage(cfg.FileStoragePath)
+		// 2. Сохраняем указатель на конкретный тип FileStorage
+		fs, err := storage.NewFileStorage(cfg.FileStoragePath)
 		if err != nil {
 			return fmt.Errorf("не удалось создать файловое хранилище: %w", err)
 		}
+
+		repo = fs
+		// 3. Синхронизируем счётчик shortener с максимальным uuid из файла
+		shortener.SetCounter(fs.GetMaxUUID())
+
 		logger.Info("используется файловое хранилище", zap.String("path", cfg.FileStoragePath))
 	} else {
 		// Иначе — в памяти
@@ -61,6 +67,7 @@ func run() error {
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 	r.Post("/api/shorten", h.JSONShortenHandler)
+	r.Get("/api/user/urls", h.GetUserURLsHandler)
 
 	fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
 	return http.ListenAndServe(cfg.ServerAddress, r)
