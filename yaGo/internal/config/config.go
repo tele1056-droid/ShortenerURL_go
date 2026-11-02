@@ -10,6 +10,7 @@ type Config struct {
 	ServerAddress   string // адрес запуска HTTP-сервера (например, localhost:8080)
 	BaseURL         string // базовый адрес результирующего URL (например, http://localhost:8080)
 	FileStoragePath string // конфигурация для пути к файлу
+	DatabaseDSN     string
 }
 
 // NewConfig читает флаги командной строки и возвращает готовую конфигурацию
@@ -20,6 +21,7 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "адрес запуска HTTP-сервера")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
 	flag.StringVar(&cfg.FileStoragePath, "f", "short-url-db.json", "путь к файлу для хранения данных") // тут, если будет запущен без флага -file-storage-path, то по умолчанию будет исп. файл storage.json (он будет создаваться в той папке откуда запущен автотест/сервер, обычно автотест запускаю из корня /yaGo)
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "строка подключения к базе данных")
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()
@@ -35,6 +37,10 @@ func NewConfig() *Config {
 
 	if envPath := os.Getenv("FILE_STORAGE_PATH"); envPath != "" {
 		cfg.FileStoragePath = envPath
+	}
+
+	if envDSN := os.Getenv("DATABASE_DSN"); envDSN != "" {
+		cfg.DatabaseDSN = envDSN
 	}
 	return cfg
 }
