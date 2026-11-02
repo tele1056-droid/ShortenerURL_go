@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tele1056-droid/yaGo/internal/config"
 	"github.com/tele1056-droid/yaGo/internal/handlers"
 	"github.com/tele1056-droid/yaGo/internal/middleware"
@@ -27,6 +29,22 @@ func run() error {
 	// 2. Создаём логгер
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
+
+	var pool *pgxpool.Pool
+	if cfg.DatabaseDSN != "" {
+		var err error
+		pool, err = pgxpool.New(context.Background(), cfg.DatabaseDSN)
+		if err != nil {
+			return fmt.Errorf("не удалось создать пул соединений: %w", err)
+		}
+		defer pool.Close()
+
+		// Проверяем, что БД доступна
+		if err := pool.Ping(context.Background()); err != nil {
+			return fmt.Errorf("БД недоступна: %w", err)
+		}
+		logger.Info("подключение к БД установлено")
+	}
 
 	// 3. Создаём хранилище (файловое или в памяти)
 	var repo storage.Repository
@@ -51,7 +69,7 @@ func run() error {
 	}
 
 	// 4. Создаём хендлер, внедряя хранилище (DI)
-	h := handlers.NewHandler(repo, cfg.BaseURL)
+	h := handlers.NewHandler(repo, cfg.BaseURL, pool)
 
 	// 5. Регистрируем маршруты
 	r := chi.NewRouter()
@@ -68,6 +86,7 @@ func run() error {
 	r.Get("/{id}", h.RedirectHandler)
 	r.Post("/api/shorten", h.JSONShortenHandler)
 	r.Get("/api/user/urls", h.GetUserURLsHandler)
+	r.Get("/ping", h.PingHandler)
 
 	fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
 	return http.ListenAndServe(cfg.ServerAddress, r)

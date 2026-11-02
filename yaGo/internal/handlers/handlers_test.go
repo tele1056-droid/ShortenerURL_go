@@ -14,7 +14,7 @@ import (
 func TestGetUserURLsHandler(t *testing.T) {
 	repo := storage.NewMemoryStorage()
 	repo.Save("1", "https://example.com", "test-user")
-	h := NewHandler(repo, "http://localhost:8080")
+	h := NewHandler(repo, "http://localhost:8080", nil)
 
 	// Без куки → 204
 	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
@@ -88,7 +88,7 @@ func TestJSONShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := storage.NewMemoryStorage()
-			h := NewHandler(repo, "http://localhost:8080")
+			h := NewHandler(repo, "http://localhost:8080", nil)
 
 			req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
@@ -134,7 +134,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаём мок-хранилище
 			repo := storage.NewMemoryStorage()
-			h := NewHandler(repo, "http://localhost:8080")
+			h := NewHandler(repo, "http://localhost:8080", nil)
 
 			// Создаём фейковый запрос
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
@@ -158,7 +158,7 @@ func TestRedirectHandler(t *testing.T) {
 	// Подготовка: создаём хранилище с одной ссылкой
 	repo := storage.NewMemoryStorage()
 	repo.Save("abc123", "https://example.com", "test-user")
-	h := NewHandler(repo, "http://localhost:8080")
+	h := NewHandler(repo, "http://localhost:8080", nil)
 
 	tests := []struct {
 		name         string

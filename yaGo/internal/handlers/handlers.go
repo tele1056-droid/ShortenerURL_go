@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid" // или используйте crypto/rand
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
@@ -26,6 +27,7 @@ type ShortenResponse struct {
 type Handler struct {
 	repo    storage.Repository
 	baseURL string
+	pool    *pgxpool.Pool
 }
 
 type respPair struct {
@@ -33,8 +35,12 @@ type respPair struct {
 	OriginalURL string `json:"original_url"`
 }
 
-func NewHandler(repo storage.Repository, baseURL string) *Handler {
-	return &Handler{repo: repo, baseURL: baseURL}
+func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool) *Handler {
+	return &Handler{
+		repo:    repo,
+		baseURL: baseURL,
+		pool:    pool,
+	}
 }
 
 // getUserID извлекает user_id из куки. Если куки нет, возвращает false.
@@ -53,6 +59,18 @@ func setUserID(w http.ResponseWriter, userID string) {
 		Value: userID,
 		Path:  "/",
 	})
+}
+
+func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if err := h.pool.Ping(r.Context()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
