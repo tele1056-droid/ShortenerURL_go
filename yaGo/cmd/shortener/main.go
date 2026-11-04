@@ -57,6 +57,13 @@ func run() error {
 		repo = pgRepo
 		logger.Info("используется PostgreSQL")
 
+		maxID, err := pgRepo.GetMaxUUID(context.Background())
+		if err != nil {
+			return fmt.Errorf("не удалось получить максимальный ID из БД: %w", err)
+		}
+		shortener.SetCounter(maxID) // Устанавливаем счётчик shortener на актуальное значение
+		logger.Info("счётчик синхронизирован с БД", zap.Int("maxID", maxID))
+
 	} else if cfg.FileStoragePath != "" {
 		fs, err := storage.NewFileStorage(cfg.FileStoragePath)
 		if err != nil {

@@ -11,6 +11,18 @@ type PostgresStorage struct {
 	pool *pgxpool.Pool
 }
 
+func (s *PostgresStorage) GetMaxUUID(ctx context.Context) (int, error) {
+	var maxID int
+	// Предполагаем, что uuid — это число в виде текста, или используйте MAX(short_url), если код числовой
+	query := `SELECT COALESCE(MAX(CAST(uuid AS INTEGER)), 0) FROM urls`
+	err := s.pool.QueryRow(ctx, query).Scan(&maxID)
+	return maxID, err
+
+	/*
+		(Если uuid — это строка, а short_url — числовой код, лучше использовать MAX(CAST(short_url AS INTEGER)), если коды числовые).
+	*/
+}
+
 func NewPostgresStorage(ctx context.Context, pool *pgxpool.Pool) (*PostgresStorage, error) {
 	// 1. Создаем таблицу, если её нет
 	query := `
