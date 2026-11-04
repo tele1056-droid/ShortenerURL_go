@@ -4,33 +4,40 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tele1056-droid/yaGo/internal/config"
 	"github.com/tele1056-droid/yaGo/internal/handlers"
 	"github.com/tele1056-droid/yaGo/internal/middleware"
-	"github.com/tele1056-droid/yaGo/internal/shortener" // добав. импорт
+	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 	"go.uber.org/zap"
 )
 
 func main() {
-	// вариант с run() - более профессиональный
 	if err := run(); err != nil {
-		panic(err)
+		fmt.Printf("Ошибка: %v\n", err)
+		os.Exit(1)
 	}
 }
 
 func run() error {
-	// 1. Инициализируем конфигурацию (читаем флаги и env)
+	// 1. Конфигурация
 	cfg := config.NewConfig()
 
-	// 2. Создаём логгер
+	// 2. Логгер
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
+	// 3. Хранилище (Postgres > File > Memory)
+	var repo storage.Repository
 	var pool *pgxpool.Pool
+
 	if cfg.DatabaseDSN != "" {
 		var err error
 		pool, err = pgxpool.New(context.Background(), cfg.DatabaseDSN)
@@ -39,47 +46,38 @@ func run() error {
 		}
 		defer pool.Close()
 
-		// Проверяем, что БД доступна
 		if err := pool.Ping(context.Background()); err != nil {
 			return fmt.Errorf("БД недоступна: %w", err)
 		}
-		logger.Info("подключение к БД установлено")
-	}
 
-	// 3. Создаём хранилище (файловое или в памяти)
-	var repo storage.Repository
+		pgRepo, err := storage.NewPostgresStorage(context.Background(), pool)
+		if err != nil {
+			return fmt.Errorf("не удалось инициализировать Postgres: %w", err)
+		}
+		repo = pgRepo
+		logger.Info("используется PostgreSQL")
 
-	if cfg.FileStoragePath != "" {
-		// Если путь к файлу задан — используем файловое хранилище
-		// 2. Сохраняем указатель на конкретный тип FileStorage
+	} else if cfg.FileStoragePath != "" {
 		fs, err := storage.NewFileStorage(cfg.FileStoragePath)
 		if err != nil {
 			return fmt.Errorf("не удалось создать файловое хранилище: %w", err)
 		}
-
 		repo = fs
-		// 3. Синхронизируем счётчик shortener с максимальным uuid из файла
 		shortener.SetCounter(fs.GetMaxUUID())
-
 		logger.Info("используется файловое хранилище", zap.String("path", cfg.FileStoragePath))
+
 	} else {
-		// Иначе — в памяти
 		repo = storage.NewMemoryStorage()
 		logger.Info("используется хранилище в памяти")
 	}
 
-	// 4. Создаём хендлер, внедряя хранилище (DI)
+	// 4. Хендлер
 	h := handlers.NewHandler(repo, cfg.BaseURL, pool)
 
-	// 5. Регистрируем маршруты
+	// 5. Роутер
 	r := chi.NewRouter()
-
-	//iter7.a. Сначала разжимаем входящий запрос
 	r.Use(middleware.DecompressMiddleware)
-	// Логируем
 	r.Use(middleware.LoggerMiddleware(logger))
-
-	//iter7.b. Сжимаем ответ (если клиент поддерживает)
 	r.Use(middleware.GzipMiddleware)
 
 	r.Post("/", h.ShortenHandler)
@@ -88,6 +86,29 @@ func run() error {
 	r.Get("/api/user/urls", h.GetUserURLsHandler)
 	r.Get("/ping", h.PingHandler)
 
-	fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
-	return http.ListenAndServe(cfg.ServerAddress, r)
+	// 6. HTTP-сервер
+	server := &http.Server{
+		Addr:    cfg.ServerAddress,
+		Handler: r,
+	}
+
+	// 7. Graceful shutdown
+	go func() {
+		fmt.Printf("Сервер запущен на %s\n", cfg.ServerAddress)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Ошибка сервера", zap.Error(err))
+		}
+	}()
+
+	// Ждем сигнал
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("Завершение работы сервера...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return server.Shutdown(ctx)
 }
