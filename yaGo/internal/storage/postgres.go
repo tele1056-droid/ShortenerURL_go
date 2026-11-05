@@ -80,3 +80,22 @@ func (s *PostgresStorage) GetAllByUser(userID string) (map[string]string, error)
 	}
 	return result, nil
 }
+
+func (s *PostgresStorage) SaveBatch(ctx context.Context, records []URLRecord) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, rec := range records {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO urls (uuid, short_url, original_url, user_id) VALUES ($1, $2, $3, $4)`,
+			rec.UUID, rec.ShortURL, rec.OriginalURL, rec.UserID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}

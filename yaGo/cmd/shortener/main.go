@@ -92,6 +92,7 @@ func run() error {
 	r.Post("/api/shorten", h.JSONShortenHandler)
 	r.Get("/api/user/urls", h.GetUserURLsHandler)
 	r.Get("/ping", h.PingHandler)
+	r.Post("/api/shorten/batch", h.BatchShortenHandler)
 
 	// 6. HTTP-сервер
 	server := &http.Server{
