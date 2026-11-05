@@ -57,12 +57,14 @@ func run() error {
 		repo = pgRepo
 		logger.Info("используется PostgreSQL")
 
-		maxID, err := pgRepo.GetMaxUUID(context.Background())
+		maxCode, err := pgRepo.GetMaxShortURL(context.Background())
 		if err != nil {
-			return fmt.Errorf("не удалось получить максимальный ID из БД: %w", err)
+			return fmt.Errorf("не удалось получить максимальный код из БД: %w", err)
 		}
-		shortener.SetCounter(maxID) // Устанавливаем счётчик shortener на актуальное значение
-		logger.Info("счётчик синхронизирован с БД", zap.Int("maxID", maxID))
+		if maxCode != "" {
+			shortener.SetCounter(int(shortener.FromBase62(maxCode)))
+		}
+		logger.Info("счётчик синхронизирован с БД", zap.String("maxCode", maxCode))
 
 	} else if cfg.FileStoragePath != "" {
 		fs, err := storage.NewFileStorage(cfg.FileStoragePath)
@@ -92,6 +94,7 @@ func run() error {
 	r.Post("/api/shorten", h.JSONShortenHandler)
 	r.Get("/api/user/urls", h.GetUserURLsHandler)
 	r.Get("/ping", h.PingHandler)
+	r.Post("/api/shorten/batch", h.BatchShortenHandler)
 
 	// 6. HTTP-сервер
 	server := &http.Server{

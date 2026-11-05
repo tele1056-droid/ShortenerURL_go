@@ -35,6 +35,16 @@ type respPair struct {
 	OriginalURL string `json:"original_url"`
 }
 
+type BatchRequest struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchResponse struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
 func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool) *Handler {
 	return &Handler{
 		repo:    repo,
@@ -59,6 +69,58 @@ func setUserID(w http.ResponseWriter, userID string) {
 		Value: userID,
 		Path:  "/",
 	})
+}
+
+func (h *Handler) BatchShortenHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var requests []BatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&requests); err != nil {
+		http.Error(w, "Некорректный JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(requests) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := getUserID(r)
+	if !ok {
+		userID = uuid.New().String()
+		setUserID(w, userID)
+	}
+
+	var records []storage.URLRecord
+	var responses []BatchResponse
+
+	for _, req := range requests {
+		code := shortener.Shorten()
+		rec := storage.URLRecord{
+			UUID:          code, // или генерировать отдельно
+			ShortURL:      code,
+			OriginalURL:   req.OriginalURL,
+			UserID:        userID,
+			CorrelationID: req.CorrelationID,
+		}
+		records = append(records, rec)
+		responses = append(responses, BatchResponse{
+			CorrelationID: req.CorrelationID,
+			ShortURL:      fmt.Sprintf("%s/%s", h.baseURL, code),
+		})
+	}
+
+	if err := h.repo.SaveBatch(r.Context(), records); err != nil {
+		http.Error(w, "Ошибка сохранения", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(responses)
 }
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {

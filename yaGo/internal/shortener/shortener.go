@@ -1,6 +1,9 @@
 package shortener
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 var (
 	mu sync.Mutex // используем один мьютекс на весь пакет (т.е. для Shorten() и Get()).  Т.к. защищаем один ресурс (мапу urls и счётчик counter), то один замок(мьютекс) для одного ресурса.
@@ -21,6 +24,19 @@ func toBase62(n int64) string {
 		remainder := n % 62
 		result = string(base62Chars[remainder]) + result
 		n = n / 62
+	}
+	return result
+}
+
+func FromBase62(s string) int64 {
+	const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	var result int64
+	for _, c := range s {
+		idx := strings.IndexRune(chars, c)
+		if idx == -1 {
+			return 0 // ошибка
+		}
+		result = result*62 + int64(idx)
 	}
 	return result
 }

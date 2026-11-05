@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 	"strconv"
@@ -24,6 +25,18 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 		return nil, err
 	}
 	return fs, nil
+}
+
+func (s *FileStorage) SaveBatch(ctx context.Context, records []URLRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rec := range records {
+		s.urls[rec.ShortURL] = rec
+		if err := s.save(rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *FileStorage) GetMaxUUID() int {

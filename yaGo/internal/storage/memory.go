@@ -1,6 +1,9 @@
 package storage
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type MemoryStorage struct {
 	mu   sync.Mutex
@@ -42,4 +45,13 @@ func (s *MemoryStorage) GetAllByUser(userID string) (map[string]string, error) {
 		}
 	}
 	return result, nil
+}
+
+func (s *MemoryStorage) SaveBatch(ctx context.Context, records []URLRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rec := range records {
+		s.urls[rec.ShortURL] = rec
+	}
+	return nil
 }
