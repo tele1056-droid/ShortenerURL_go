@@ -3,24 +3,41 @@ package storage
 import (
 	"context"
 	"errors"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tele1056-droid/yaGo/internal/shortener"
 )
 
 type PostgresStorage struct {
 	pool *pgxpool.Pool
 }
 
-func (s *PostgresStorage) GetMaxUUID(ctx context.Context) (int, error) {
-	var maxID int
-	// Предполагаем, что uuid — это число в виде текста, или используйте MAX(short_url), если код числовой
-	query := `SELECT COALESCE(MAX(CAST(uuid AS INTEGER)), 0) FROM urls`
-	err := s.pool.QueryRow(ctx, query).Scan(&maxID)
-	return maxID, err
+func (s *PostgresStorage) GetMaxShortURL(ctx context.Context) (string, error) {
+	// Мы не можем использовать MAX(), потому что строки сортируются лексикографически, а не по числовому значению.
+	// Поэтому нужно получить все short_url и найти максимум в Go, либо использовать сортировку по длине, а затем лексикографически.
+	// Простой, но не самый эффективный способ: получить все и найти максимум в Go.
+	// Для учебного проекта это допустимо.
+	rows, err := s.pool.Query(ctx, `SELECT short_url FROM urls`)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
 
-	/*
-		(Если uuid — это строка, а short_url — числовой код, лучше использовать MAX(CAST(short_url AS INTEGER)), если коды числовые).
-	*/
+	var maxCode string
+	var maxVal int64 = -1
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return "", err
+		}
+		val := shortener.FromBase62(code)
+		if val > maxVal {
+			maxVal = val
+			maxCode = code
+		}
+	}
+	return maxCode, rows.Err()
 }
 
 func NewPostgresStorage(ctx context.Context, pool *pgxpool.Pool) (*PostgresStorage, error) {
