@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strconv"
 	"sync"
@@ -25,6 +26,17 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 		return nil, err
 	}
 	return fs, nil
+}
+
+func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for code, rec := range s.urls {
+		if rec.OriginalURL == originalURL {
+			return code, nil
+		}
+	}
+	return "", errors.New("url not found")
 }
 
 func (s *FileStorage) SaveBatch(ctx context.Context, records []URLRecord) error {
@@ -102,6 +114,14 @@ func (s *FileStorage) Save(code, longURL, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Проверяем, есть ли уже такая запись
+	for _, rec := range s.urls {
+		if rec.OriginalURL == longURL {
+			return ErrURLExists
+		}
+	}
+
+	// Если дубликата нет — сохраняем в карту и в файл
 	s.counter++
 	rec := URLRecord{
 		UUID:        strconv.Itoa(s.counter),
@@ -110,7 +130,7 @@ func (s *FileStorage) Save(code, longURL, userID string) error {
 		UserID:      userID,
 	}
 	s.urls[code] = rec
-	return s.save(rec)
+	return s.save(rec) // запись в файл
 }
 
 func (s *FileStorage) Get(code string) (string, bool) {

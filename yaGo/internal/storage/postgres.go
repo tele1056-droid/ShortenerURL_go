@@ -3,14 +3,27 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 )
 
 type PostgresStorage struct {
 	pool *pgxpool.Pool
+}
+
+func (s *PostgresStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
+	var shortURL string
+	err := s.pool.QueryRow(ctx, `SELECT short_url FROM urls WHERE original_url = $1`, originalURL).Scan(&shortURL)
+	if err != nil {
+		return "", err
+	}
+	return shortURL, nil
 }
 
 func (s *PostgresStorage) GetMaxShortURL(ctx context.Context) (string, error) {
@@ -41,28 +54,36 @@ func (s *PostgresStorage) GetMaxShortURL(ctx context.Context) (string, error) {
 }
 
 func NewPostgresStorage(ctx context.Context, pool *pgxpool.Pool) (*PostgresStorage, error) {
-	// 1. Создаем таблицу, если её нет
 	query := `
 	CREATE TABLE IF NOT EXISTS urls (
-			uuid TEXT PRIMARY KEY,
-			short_url TEXT NOT NULL UNIQUE,
-			original_url TEXT NOT NULL,
-			user_id TEXT
+		id SERIAL PRIMARY KEY,
+		short_url TEXT NOT NULL UNIQUE,
+		original_url TEXT NOT NULL UNIQUE, -- <-- добавляем UNIQUE
+		user_id TEXT
 	);`
 
 	if _, err := pool.Exec(ctx, query); err != nil {
 		return nil, err
 	}
-
 	return &PostgresStorage{pool: pool}, nil
 }
 
 func (s *PostgresStorage) Save(code, longURL, userID string) error {
-	// В задании uuid генерируется, но для простоты можно использовать code как uuid
-	// или генерировать UUID через библиотеку google/uuid
-	query := `INSERT INTO urls (uuid, short_url, original_url, user_id) VALUES ($1,$2, $3, $4)`
-	_, err := s.pool.Exec(context.Background(), query, code, code, longURL, userID)
-	return err
+	_, err := s.pool.Exec(context.Background(),
+		`INSERT INTO urls (short_url, original_url, user_id) VALUES ($1, $2, $3)`,
+		code, longURL, userID,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			if strings.Contains(pgErr.ConstraintName, "original_url") {
+				return ErrURLExists
+			}
+			return fmt.Errorf("конфликт short_url: %w", err)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *PostgresStorage) Get(code string) (string, bool) {
