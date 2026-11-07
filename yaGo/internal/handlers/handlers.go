@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -202,7 +203,29 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	code := shortener.Shorten()
-	h.repo.Save(code, req.URL, userID) // передаем userID
+	err = h.repo.Save(code, req.URL, userID)
+
+	// --- НОВАЯ ОБРАБОТКА ОШИБКИ ---
+	if errors.Is(err, storage.ErrURLExists) {
+		existingShort, err := h.repo.GetByOriginalURL(r.Context(), req.URL)
+		if err != nil {
+			http.Error(w, "Ошибка получения существующего URL", http.StatusInternalServerError)
+			return
+		}
+		resp := ShortenResponse{
+			Result: fmt.Sprintf("%s/%s", h.baseURL, existingShort),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict) // 409
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+	// -----------------------------
+
+	if err != nil {
+		http.Error(w, "Ошибка сохранения", http.StatusInternalServerError)
+		return
+	}
 
 	resp := ShortenResponse{
 		Result: fmt.Sprintf("%s/%s", h.baseURL, code),
@@ -264,7 +287,26 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	code := shortener.Shorten()
-	h.repo.Save(code, longURL, userID) // передаем userID
+	err = h.repo.Save(code, longURL, userID)
+
+	// --- НОВАЯ ОБРАБОТКА ОШИБКИ ---
+	if errors.Is(err, storage.ErrURLExists) {
+		existingShort, err := h.repo.GetByOriginalURL(r.Context(), longURL)
+		if err != nil {
+			http.Error(w, "Ошибка получения существующего URL", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusConflict) // 409
+		fmt.Fprintf(w, "%s/%s", h.baseURL, existingShort)
+		return
+	}
+	// -----------------------------
+
+	if err != nil {
+		http.Error(w, "Ошибка сохранения", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)

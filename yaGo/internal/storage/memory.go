@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -14,9 +15,29 @@ func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{urls: make(map[string]URLRecord)}
 }
 
+func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for code, rec := range s.urls {
+		if rec.OriginalURL == originalURL {
+			return code, nil
+		}
+	}
+	return "", errors.New("url not found")
+}
+
 func (s *MemoryStorage) Save(code, longURL, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Проверяем, есть ли уже такая запись
+	for _, rec := range s.urls {
+		if rec.OriginalURL == longURL {
+			return ErrURLExists // возвращаем ошибку, хендлер вернёт 409
+		}
+	}
+
+	// Если дубликата нет — сохраняем
 	s.urls[code] = URLRecord{
 		ShortURL:    code,
 		OriginalURL: longURL,

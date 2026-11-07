@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
+	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6
 	github.com/jackc/pgx/v5 v5.12.0
 	go.uber.org/zap v1.28.0
 )
