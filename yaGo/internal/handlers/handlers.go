@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid" // или используйте crypto/rand
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tele1056-droid/yaGo/internal/auth"
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
@@ -26,9 +27,10 @@ type ShortenResponse struct {
 }
 
 type Handler struct {
-	repo    storage.Repository
-	baseURL string
-	pool    *pgxpool.Pool
+	repo      storage.Repository
+	baseURL   string
+	pool      *pgxpool.Pool
+	secretKey string
 }
 
 type respPair struct {
@@ -46,11 +48,12 @@ type BatchResponse struct {
 	ShortURL      string `json:"short_url"`
 }
 
-func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool) *Handler {
+func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool, secretKey string) *Handler {
 	return &Handler{
-		repo:    repo,
-		baseURL: baseURL,
-		pool:    pool,
+		repo:      repo,
+		baseURL:   baseURL,
+		pool:      pool,
+		secretKey: secretKey,
 	}
 }
 
@@ -142,9 +145,9 @@ func (h *Handler) GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		w.WriteHeader(http.StatusNoContent) // 204
+		w.WriteHeader(http.StatusUnauthorized) // 401
 		return
 	}
 
@@ -195,11 +198,9 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем или создаем user_id
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		userID = uuid.New().String()
-		setUserID(w, userID)
+		userID = auth.CreateCookie(w, h.secretKey)
 	}
 
 	code := shortener.Shorten()
@@ -279,11 +280,9 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем или создаем user_id
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		userID = uuid.New().String()
-		setUserID(w, userID)
+		userID = auth.CreateCookie(w, h.secretKey)
 	}
 
 	code := shortener.Shorten()

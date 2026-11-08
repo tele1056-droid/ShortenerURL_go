@@ -81,7 +81,7 @@ func run() error {
 	}
 
 	// 4. Хендлер
-	h := handlers.NewHandler(repo, cfg.BaseURL, pool)
+	h := handlers.NewHandler(repo, cfg.BaseURL, pool, cfg.SecretKey)
 
 	// 5. Роутер
 	r := chi.NewRouter()
