@@ -13,4 +13,5 @@ type Repository interface {
 	GetAllByUser(userID string) (map[string]string, error)
 	GetByOriginalURL(ctx context.Context, originalURL string) (string, error) // <-- новый метод
 	SaveBatch(ctx context.Context, records []URLRecord) error
+	DeleteByUser(ctx context.Context, userID string) error
 }

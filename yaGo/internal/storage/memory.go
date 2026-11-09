@@ -15,6 +15,18 @@ func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{urls: make(map[string]URLRecord)}
 }
 
+func (s *MemoryStorage) DeleteByUser(ctx context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for code, rec := range s.urls {
+		if rec.UserID == userID {
+			delete(s.urls, code)
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

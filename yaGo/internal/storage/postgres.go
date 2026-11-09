@@ -26,6 +26,11 @@ func (s *PostgresStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 	return shortURL, nil
 }
 
+func (s *PostgresStorage) DeleteByUser(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM urls WHERE user_id = $1`, userID)
+	return err
+}
+
 func (s *PostgresStorage) GetMaxShortURL(ctx context.Context) (string, error) {
 	// Мы не можем использовать MAX(), потому что строки сортируются лексикографически, а не по числовому значению.
 	// Поэтому нужно получить все short_url и найти максимум в Go, либо использовать сортировку по длине, а затем лексикографически.

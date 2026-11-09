@@ -75,6 +75,26 @@ func setUserID(w http.ResponseWriter, userID string) {
 	})
 }
 
+func (h *Handler) DeleteUserURLsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r, h.secretKey)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized) // 401
+		return
+	}
+	fmt.Printf("DEBUG: удаляем URL для userID: %s\n", userID)
+	if err := h.repo.DeleteByUser(r.Context(), userID); err != nil {
+		http.Error(w, "Ошибка удаления", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted) // 202
+}
+
 func (h *Handler) BatchShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

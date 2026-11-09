@@ -28,6 +28,39 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return fs, nil
 }
 
+func (s *FileStorage) DeleteByUser(ctx context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 1. Удаляем из карты в памяти
+	for code, rec := range s.urls {
+		if rec.UserID == userID {
+			delete(s.urls, code)
+		}
+	}
+
+	// 2. Перезаписываем файл только оставшимися записями
+	file, err := os.Create(s.filePath) // создает/перезаписывает файл
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Проходим по оставшимся записям и пишем их в файл
+	for _, rec := range s.urls {
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if _, err := file.Write(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
