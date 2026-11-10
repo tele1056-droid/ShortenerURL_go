@@ -19,7 +19,7 @@ type PostgresStorage struct {
 
 func (s *PostgresStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	var shortURL string
-	err := s.pool.QueryRow(ctx, `SELECT short_url FROM urls WHERE original_url = $1`, originalURL).Scan(&shortURL)
+	err := s.pool.QueryRow(ctx, `SELECT short_url FROM urls WHERE original_url = $1 AND deleted = FALSE`, originalURL).Scan(&shortURL)
 	if err != nil {
 		return "", err
 	}
@@ -27,16 +27,12 @@ func (s *PostgresStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 }
 
 func (s *PostgresStorage) DeleteByUser(ctx context.Context, userID string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM urls WHERE user_id = $1`, userID)
+	_, err := s.pool.Exec(ctx, `UPDATE urls SET deleted = TRUE WHERE user_id = $1`, userID)
 	return err
 }
 
 func (s *PostgresStorage) GetMaxShortURL(ctx context.Context) (string, error) {
-	// Мы не можем использовать MAX(), потому что строки сортируются лексикографически, а не по числовому значению.
-	// Поэтому нужно получить все short_url и найти максимум в Go, либо использовать сортировку по длине, а затем лексикографически.
-	// Простой, но не самый эффективный способ: получить все и найти максимум в Go.
-	// Для учебного проекта это допустимо.
-	rows, err := s.pool.Query(ctx, `SELECT short_url FROM urls`)
+	rows, err := s.pool.Query(ctx, `SELECT short_url FROM urls WHERE deleted = FALSE`)
 	if err != nil {
 		return "", err
 	}
@@ -63,13 +59,15 @@ func NewPostgresStorage(ctx context.Context, pool *pgxpool.Pool) (*PostgresStora
 	CREATE TABLE IF NOT EXISTS urls (
 		id SERIAL PRIMARY KEY,
 		short_url TEXT NOT NULL UNIQUE,
-		original_url TEXT NOT NULL UNIQUE, -- <-- добавляем UNIQUE
-		user_id TEXT
+		original_url TEXT NOT NULL UNIQUE,
+		user_id TEXT,
+		deleted BOOLEAN DEFAULT FALSE
 	);`
 
 	if _, err := pool.Exec(ctx, query); err != nil {
 		return nil, err
 	}
+
 	return &PostgresStorage{pool: pool}, nil
 }
 
@@ -91,22 +89,39 @@ func (s *PostgresStorage) Save(code, longURL, userID string) error {
 	return nil
 }
 
+// Get возвращает URL и флаг «найдено». Если URL удалён, возвращает false.
 func (s *PostgresStorage) Get(code string) (string, bool) {
 	var originalURL string
-	query := `SELECT original_url FROM urls WHERE short_url = $1`
-	err := s.pool.QueryRow(context.Background(), query, code).Scan(&originalURL)
+	var deleted bool
+	query := `SELECT original_url, deleted FROM urls WHERE short_url = $1`
+	err := s.pool.QueryRow(context.Background(), query, code).Scan(&originalURL, &deleted)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", false
+			return "", false // никогда не существовал
 		}
 		return "", false
+	}
+	if deleted {
+		return "", false // существовал, но удалён
 	}
 	return originalURL, true
 }
 
+// IsDeleted проверяет, был ли URL удалён (для возврата 410 Gone).
+func (s *PostgresStorage) IsDeleted(code string) bool {
+	var deleted bool
+	query := `SELECT deleted FROM urls WHERE short_url = $1`
+	err := s.pool.QueryRow(context.Background(), query, code).Scan(&deleted)
+	if err != nil {
+		return false // не найден
+	}
+	return deleted
+}
+
+// GetAllByUser возвращает только НЕудалённые URL пользователя.
 func (s *PostgresStorage) GetAllByUser(userID string) (map[string]string, error) {
-	query := `SELECT short_url, original_url FROM urls WHERE user_id = $1`
+	query := `SELECT short_url, original_url FROM urls WHERE user_id = $1 AND deleted = FALSE`
 	rows, err := s.pool.Query(context.Background(), query, userID)
 	if err != nil {
 		return nil, err
@@ -133,8 +148,8 @@ func (s *PostgresStorage) SaveBatch(ctx context.Context, records []URLRecord) er
 
 	for _, rec := range records {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO urls (uuid, short_url, original_url, user_id) VALUES ($1, $2, $3, $4)`,
-			rec.UUID, rec.ShortURL, rec.OriginalURL, rec.UserID,
+			`INSERT INTO urls (short_url, original_url, user_id) VALUES ($1, $2, $3)`,
+			rec.ShortURL, rec.OriginalURL, rec.UserID,
 		)
 		if err != nil {
 			return err

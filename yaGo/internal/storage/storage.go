@@ -14,4 +14,5 @@ type Repository interface {
 	GetByOriginalURL(ctx context.Context, originalURL string) (string, error) // <-- новый метод
 	SaveBatch(ctx context.Context, records []URLRecord) error
 	DeleteByUser(ctx context.Context, userID string) error
+	IsDeleted(code string) bool
 }

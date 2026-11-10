@@ -15,13 +15,23 @@ func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{urls: make(map[string]URLRecord)}
 }
 
+func (s *MemoryStorage) IsDeleted(code string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.urls[code]
+	if !ok {
+		return false
+	}
+	return rec.Deleted
+}
+
 func (s *MemoryStorage) DeleteByUser(ctx context.Context, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	for code, rec := range s.urls {
 		if rec.UserID == userID {
-			delete(s.urls, code)
+			rec.Deleted = true
+			s.urls[code] = rec
 		}
 	}
 	return nil
@@ -62,7 +72,7 @@ func (s *MemoryStorage) Get(code string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.urls[code]
-	if !ok {
+	if !ok || rec.Deleted {
 		return "", false
 	}
 	return rec.OriginalURL, true
@@ -73,7 +83,7 @@ func (s *MemoryStorage) GetAllByUser(userID string) (map[string]string, error) {
 	defer s.mu.Unlock()
 	result := make(map[string]string)
 	for code, rec := range s.urls {
-		if rec.UserID == userID {
+		if rec.UserID == userID && !rec.Deleted {
 			result[code] = rec.OriginalURL
 		}
 	}
