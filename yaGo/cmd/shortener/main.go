@@ -81,7 +81,7 @@ func run() error {
 	}
 
 	// 4. Хендлер
-	h := handlers.NewHandler(repo, cfg.BaseURL, pool)
+	h := handlers.NewHandler(repo, cfg.BaseURL, pool, cfg.SecretKey)
 
 	// 5. Роутер
 	r := chi.NewRouter()
@@ -95,6 +95,7 @@ func run() error {
 	r.Get("/api/user/urls", h.GetUserURLsHandler)
 	r.Get("/ping", h.PingHandler)
 	r.Post("/api/shorten/batch", h.BatchShortenHandler)
+	r.Delete("/api/user/urls", h.DeleteUserURLsHandler)
 
 	// 6. HTTP-сервер
 	server := &http.Server{

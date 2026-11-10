@@ -6,4 +6,5 @@ type URLRecord struct {
 	OriginalURL   string `json:"original_url"`
 	UserID        string `json:"user_id,omitempty"`
 	CorrelationID string `json:"correlation_id,omitempty"`
+	Deleted       bool   `json:"deleted,omitempty"`
 }

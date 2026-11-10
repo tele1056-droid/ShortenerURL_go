@@ -11,6 +11,7 @@ type Config struct {
 	BaseURL         string // базовый адрес результирующего URL (например, http://localhost:8080)
 	FileStoragePath string // конфигурация для пути к файлу
 	DatabaseDSN     string
+	SecretKey       string
 }
 
 // NewConfig читает флаги командной строки и возвращает готовую конфигурацию
@@ -22,6 +23,7 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "базовый адрес результирующего URL")
 	flag.StringVar(&cfg.FileStoragePath, "f", "short-url-db.json", "путь к файлу для хранения данных") // тут, если будет запущен без флага -file-storage-path, то по умолчанию будет исп. файл storage.json (он будет создаваться в той папке откуда запущен автотест/сервер, обычно автотест запускаю из корня /yaGo)
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "строка подключения к базе данных")
+	flag.StringVar(&cfg.SecretKey, "s", "super-secret-key", "секретный ключ для подписи кук")
 
 	// Парсим флаги (обязательно!)
 	flag.Parse()

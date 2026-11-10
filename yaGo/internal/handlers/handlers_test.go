@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,17 +9,37 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/tele1056-droid/yaGo/internal/auth"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
 
+func makeAuthCookie(t *testing.T, secret string) *http.Cookie {
+	w := httptest.NewRecorder()
+	auth.CreateCookie(w, secret) // устанавливает куку в w
+	cookies := w.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("не удалось создать куку")
+	}
+	return cookies[0]
+}
+
 func TestGetUserURLsHandler(t *testing.T) {
+	const secret = "super-secret"
 	repo := storage.NewMemoryStorage()
-	repo.Save("1", "https://example.com", "test-user")
-	h := NewHandler(repo, "http://localhost:8080", nil)
+
+	// Генерируем куку и извлекаем userID
+	w := httptest.NewRecorder()
+	userID := auth.CreateCookie(w, secret)
+	cookie := w.Result().Cookies()[0]
+
+	// Сохраняем URL с этим userID
+	repo.Save("1", "https://example.com", userID)
+
+	h := NewHandler(repo, "http://localhost:8080", nil, secret)
 
 	// Без куки → 204
 	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
-	w := httptest.NewRecorder()
+	w = httptest.NewRecorder()
 	h.GetUserURLsHandler(w, req)
 	if w.Code != http.StatusNoContent {
 		t.Errorf("ожидался код 204, получен %d", w.Code)
@@ -26,7 +47,7 @@ func TestGetUserURLsHandler(t *testing.T) {
 
 	// С кукой → 200
 	req = httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
-	req.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	req.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	h.GetUserURLsHandler(w, req)
 	if w.Code != http.StatusOK {
@@ -88,7 +109,7 @@ func TestJSONShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := storage.NewMemoryStorage()
-			h := NewHandler(repo, "http://localhost:8080", nil)
+			h := NewHandler(repo, "http://localhost:8080", nil, "super-secret")
 
 			req := httptest.NewRequest(tt.method, "/api/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
@@ -134,7 +155,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаём мок-хранилище
 			repo := storage.NewMemoryStorage()
-			h := NewHandler(repo, "http://localhost:8080", nil)
+			h := NewHandler(repo, "http://localhost:8080", nil, "super-secret")
 
 			// Создаём фейковый запрос
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
@@ -155,10 +176,17 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestRedirectHandler(t *testing.T) {
-	// Подготовка: создаём хранилище с одной ссылкой
 	repo := storage.NewMemoryStorage()
 	repo.Save("abc123", "https://example.com", "test-user")
-	h := NewHandler(repo, "http://localhost:8080", nil)
+	repo.Save("deleted", "https://deleted.com", "test-user")
+
+	// Помечаем "deleted" как удалённый
+	// Если DeleteByUser удаляет все URL пользователя, нужно сделать так:
+	// Проще: сохранить оба, но для "deleted" использовать отдельный userID и удалить его.
+	repo.Save("deleted", "https://deleted.com", "other-user")
+	_ = repo.DeleteByUser(context.Background(), "other-user") // Удаляем только "deleted"
+
+	h := NewHandler(repo, "http://localhost:8080", nil, "super-secret")
 
 	tests := []struct {
 		name         string
@@ -170,15 +198,14 @@ func TestRedirectHandler(t *testing.T) {
 		{"успех", http.MethodGet, "/abc123", http.StatusTemporaryRedirect, "https://example.com"},
 		{"неверный метод", http.MethodPost, "/abc123", http.StatusMethodNotAllowed, ""},
 		{"несуществующий код", http.MethodGet, "/nonexistent", http.StatusNotFound, ""},
+		{"удалённый код", http.MethodGet, "/deleted", http.StatusGone, ""}, // <-- новый кейс
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Создаём роутер chi и регистрируем маршрут
 			r := chi.NewRouter()
 			r.Get("/{id}", h.RedirectHandler)
 
-			// Создаём запрос и прогоняем его через роутер
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)

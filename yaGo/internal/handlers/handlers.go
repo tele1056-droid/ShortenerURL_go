@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid" // или используйте crypto/rand
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tele1056-droid/yaGo/internal/auth"
 	"github.com/tele1056-droid/yaGo/internal/shortener"
 	"github.com/tele1056-droid/yaGo/internal/storage"
 )
@@ -26,9 +27,10 @@ type ShortenResponse struct {
 }
 
 type Handler struct {
-	repo    storage.Repository
-	baseURL string
-	pool    *pgxpool.Pool
+	repo      storage.Repository
+	baseURL   string
+	pool      *pgxpool.Pool
+	secretKey string
 }
 
 type respPair struct {
@@ -46,11 +48,12 @@ type BatchResponse struct {
 	ShortURL      string `json:"short_url"`
 }
 
-func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool) *Handler {
+func NewHandler(repo storage.Repository, baseURL string, pool *pgxpool.Pool, secretKey string) *Handler {
 	return &Handler{
-		repo:    repo,
-		baseURL: baseURL,
-		pool:    pool,
+		repo:      repo,
+		baseURL:   baseURL,
+		pool:      pool,
+		secretKey: secretKey,
 	}
 }
 
@@ -70,6 +73,26 @@ func setUserID(w http.ResponseWriter, userID string) {
 		Value: userID,
 		Path:  "/",
 	})
+}
+
+func (h *Handler) DeleteUserURLsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.GetUserID(r, h.secretKey)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized) // 401
+		return
+	}
+
+	if err := h.repo.DeleteByUser(r.Context(), userID); err != nil {
+		http.Error(w, "Ошибка удаления", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted) // 202
 }
 
 func (h *Handler) BatchShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -142,9 +165,9 @@ func (h *Handler) GetUserURLsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		w.WriteHeader(http.StatusNoContent) // 204
+		w.WriteHeader(http.StatusUnauthorized) // 401
 		return
 	}
 
@@ -195,11 +218,9 @@ func (h *Handler) JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем или создаем user_id
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		userID = uuid.New().String()
-		setUserID(w, userID)
+		userID = auth.CreateCookie(w, h.secretKey)
 	}
 
 	code := shortener.Shorten()
@@ -279,11 +300,9 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем или создаем user_id
-	userID, ok := getUserID(r)
+	userID, ok := auth.GetUserID(r, h.secretKey)
 	if !ok {
-		userID = uuid.New().String()
-		setUserID(w, userID)
+		userID = auth.CreateCookie(w, h.secretKey)
 	}
 
 	code := shortener.Shorten()
@@ -314,37 +333,36 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Проверка метода
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 2. Извлечение кода из пути, в данной версии теперь chi вырезает код из пути
 	code := chi.URLParam(r, "id")
-
 	if code == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// 3. Поиск URL в хранилище
 	longURL, ok := h.repo.Get(code)
 	if !ok {
-		w.WriteHeader(http.StatusNotFound)
+		// Проверяем, был ли URL удалён
+		if h.repo.IsDeleted(code) {
+			w.WriteHeader(http.StatusGone) // 410
+			return
+		}
+		w.WriteHeader(http.StatusNotFound) // 404
 		return
 	}
 
-	// 4. Установка заголовка Location и кода 307
 	w.Header().Set("Location", longURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
-
-	/* Как работает редирект:
-	1. Клиент(браузер) отправляет GET запрос http://localhost:8080/EwHXdJfB
-	2. Обработчик срабатывает на этот запрос и находит какой URL соответствует коду который передали в запросе
-	3. Сервер отвечает с кодом 307 Temporary Redirect и Location: с URL
-	4. Клиент (браузер) получает этот ответ, видит код 307 и заголовок Location, и автоматически отправляет новый GET-запрос уже на URL из Location
-	5. Сервер по URL (из Location) отвечает, и браузер (клиент) показывает страницу
-	*/
-
 }
+
+/* Как работает редирект:
+1. Клиент(браузер) отправляет GET запрос http://localhost:8080/EwHXdJfB
+2. Обработчик срабатывает на этот запрос и находит какой URL соответствует коду который передали в запросе
+3. Сервер отвечает с кодом 307 Temporary Redirect и Location: с URL
+4. Клиент (браузер) получает этот ответ, видит код 307 и заголовок Location, и автоматически отправляет новый GET-запрос уже на URL из Location
+5. Сервер по URL (из Location) отвечает, и браузер (клиент) показывает страницу
+*/

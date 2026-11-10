@@ -28,6 +28,50 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return fs, nil
 }
 
+func (s *FileStorage) IsDeleted(code string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.urls[code]
+	if !ok {
+		return false
+	}
+	return rec.Deleted
+}
+
+func (s *FileStorage) DeleteByUser(ctx context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 1. Помечаем записи пользователя как удалённые в памяти
+	for code, rec := range s.urls {
+		if rec.UserID == userID {
+			rec.Deleted = true
+			s.urls[code] = rec
+		}
+	}
+
+	// 2. Перезаписываем файл целиком (сохраняем обновлённые записи)
+	file, err := os.Create(s.filePath) // os.Create перезаписывает файл с нуля
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// 3. Записываем все записи (включая помеченные как удалённые)
+	for _, rec := range s.urls {
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if _, err := file.Write(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -62,7 +106,7 @@ func (s *FileStorage) GetAllByUser(userID string) (map[string]string, error) {
 	defer s.mu.Unlock()
 	result := make(map[string]string)
 	for code, rec := range s.urls {
-		if rec.UserID == userID {
+		if rec.UserID == userID && !rec.Deleted {
 			result[code] = rec.OriginalURL
 		}
 	}
@@ -136,11 +180,9 @@ func (s *FileStorage) Save(code, longURL, userID string) error {
 func (s *FileStorage) Get(code string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	rec, ok := s.urls[code]
-	if !ok {
+	if !ok || rec.Deleted {
 		return "", false
 	}
-
 	return rec.OriginalURL, true
 }
